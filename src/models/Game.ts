@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { Card, BlackCard, WhiteCard } from '../types/game';
+import { ICardPack } from './Card';
 
 export interface IPlayer {
     id: string;
@@ -10,11 +11,24 @@ export interface IPlayer {
 }
 
 export interface IChatMessage {
+    _id: string;
     sender: string;
     content: string;
     timestamp: Date;
     isSystemMessage: boolean;
     gameId: string;
+    status: string;
+}
+
+export interface Vote {
+    id: string;
+    initiator: string;
+    cardCount: number;
+    timestamp: Date;
+    votes: { [playerId: string]: boolean };
+    status: string;
+    cardsToChange: { [playerId: string]: string[] };
+    roundInitiated: number;
 
 }
 
@@ -37,12 +51,17 @@ export interface IGame extends Document {
     lastWinningCard: Card | null;
     winningScore: number;
     revealedCards: string[];
-    selectedBlackCardPacks: string[];
-    selectedWhiteCardPacks: string[];
+    selectedBlackCardPacks: ICardPack[];
+    selectedWhiteCardPacks: ICardPack[];
+    selectedBlackCardPacksIDs: string[];
+    selectedWhiteCardPacksIDs: string[];
     createdAt: Date;
     onlineUsers: string[];
     lastWinningReason: string | null;
     chatMessages: IChatMessage[];
+    currentVote: Vote | null;
+    usedVotes: string[];
+    lastVoteRound: number;
 }
 
 const GameSchema: Schema = new Schema({
@@ -77,17 +96,51 @@ const GameSchema: Schema = new Schema({
     lastWinningCard: Schema.Types.Mixed,
     winningScore: { type: Number, required: true },
     revealedCards: [String],
-    selectedBlackCardPacks: [String],
-    selectedWhiteCardPacks: [String],
+    selectedBlackCardPacks: [{ type: Schema.Types.Mixed }],
+    selectedWhiteCardPacks: [{ type: Schema.Types.Mixed }],
+    selectedBlackCardPacksIDs: [String],
+    selectedWhiteCardPacksIDs: [String],
     createdAt: { type: Date, default: Date.now },
     onlineUsers: [String],
     lastWinningReason: { type: String },
     chatMessages: [{
+        _id: { type: String, default: () => new mongoose.Types.ObjectId().toString() },
         sender: String,
         content: String,
         timestamp: { type: Date, default: Date.now },
-        isSystemMessage: Boolean
-    }]
+        isSystemMessage: Boolean,
+        gameId: String
+    }],
+    currentVote: {
+        id: String,
+        initiator: String,
+        cardCount: Number,
+        timestamp: Date,
+        votes: {
+            type: Map,
+            of: Boolean,
+            default: new Map()
+        },
+        status: {
+            type: String,
+            enum: ['active', 'passed', 'failed', 'selecting', 'completed'],
+            default: null
+        },
+        cardsToChange: {
+            type: Map,
+            of: [String],
+            default: new Map()
+        },
+        roundInitiated: Number
+    },
+    usedVotes: {
+        type: [String],
+        default: []
+    },
+    lastVoteRound: {
+        type: Number,
+        default: 0
+    }
 }, { _id: false });
 
 const Game = mongoose.model<IGame>('Game', GameSchema);

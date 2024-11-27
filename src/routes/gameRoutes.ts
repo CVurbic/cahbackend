@@ -27,6 +27,12 @@ import {
     getCardPacks,
     getPackCards,
     getPlayerStats,
+    rateCardPack,
+    getSortedPacks,
+    getMessagesSince,
+    initiateVote,
+    submitVote,
+    selectCardsToChange,
 } from '../controllers/gameController';
 
 const router = express.Router();
@@ -80,8 +86,27 @@ router.put('/packs/:packId', editPack);
 router.delete('/packs/:packId', deletePack);
 router.get('/packs', getCardPacks);
 router.get('/packs/:packId/cards', getPackCards);
+router.post('/packs/:packId/rate', rateCardPack);
+router.get('/packs/sorted', getSortedPacks);
 
 // Add new authenticated-only route
 router.get('/player-stats', getPlayerStats);
+
+// Add this route
+router.get('/:gameId/messages-since/:timestamp', async (req, res) => {
+    try {
+        const { gameId, timestamp } = req.params;
+        const messages = await getMessagesSince(gameId, new Date(timestamp));
+        res.status(200).json({ messages });
+    } catch (error: any) {
+        console.error('Error fetching messages since timestamp:', error);
+        res.status(500).json({ message: 'Error fetching messages', error: error.message });
+    }
+});
+
+// Add these new routes
+router.post('/:gameId/initiate-vote', initiateVote);
+router.post('/:gameId/submit-vote', submitVote);
+router.post('/:gameId/select-cards', selectCardsToChange);
 
 export default router;

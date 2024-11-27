@@ -18,15 +18,12 @@ export const authMiddleware = (
     const authReq = req as AuthRequest;
     const authHeader = authReq.header('Authorization')?.replace('Bearer ', '');
 
-    console.log('Auth Middleware - Raw auth header:', authHeader);
 
     // Remove any 'auth_' prefixes (handles multiple prefixes)
     const token = authHeader?.replace(/^(auth_)+/, '');
 
-    console.log('Auth Middleware - Processed token:', token);
 
     if (!token) {
-        console.log('Auth Middleware - No token provided');
         authReq.isAuthenticated = false;
         return next();
     }
@@ -37,17 +34,11 @@ export const authMiddleware = (
             username?: string;
             isTemporary?: boolean
         };
-        console.log('Auth Middleware - Decoded token:', decoded);
 
         authReq.userId = decoded.userId;
         authReq.username = decoded.username;
         authReq.isAuthenticated = !decoded.isTemporary;
 
-        console.log('Auth Middleware - User details:', {
-            userId: authReq.userId,
-            username: authReq.username,
-            isAuthenticated: authReq.isAuthenticated
-        });
 
         next();
     } catch (error) {

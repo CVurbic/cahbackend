@@ -1,4 +1,6 @@
-export interface Card {
+import { ICardPack } from "../models/Card";
+
+export interface Card {	
     id: string;
     text: string;
     type: 'black' | 'white';
@@ -41,6 +43,10 @@ export interface GameState {
     revealedCards: string[];
     onlineUsers: string[];
     chatMessages: ChatMessage[];
+    selectedBlackCardPacksIDs: string[];
+    selectedWhiteCardPacksIDs: string[];
+    selectedBlackCardPacks: ICardPack[];
+    selectedWhiteCardPacks: ICardPack[];
 }
 
 export interface ChatMessage {
@@ -49,4 +55,19 @@ export interface ChatMessage {
     timestamp: Date;
     gameId: string;
     isSystemMessage: boolean;
+}
+
+export interface Vote {
+    id: string;
+    initiator: string;
+    cardCount: number;
+    timestamp: Date;
+    votes: {
+        [playerId: string]: boolean;
+    };
+    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';
+    cardsToChange?: {
+        [playerId: string]: string[];
+    };
+    roundInitiated: number;
 }

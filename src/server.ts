@@ -13,6 +13,8 @@ import { createNotification } from './controllers/notificationController';
 import notificationRoutes from './routes/notificationRoutes';
 import imageRoutes from './routes/imageRoutes';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import Game from './models/Game';
 
 dotenv.config();
 const app = express();
@@ -21,7 +23,7 @@ const server = http.createServer(app);
 
 // Enable CORS for all routes
 app.use(cors());
-
+console.log(process.env.PUBLIC_URL);
 const io = new Server(server, {
     cors: {
         origin: process.env.PUBLIC_URL,
@@ -150,26 +152,50 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Add this handler for chat messages
-    socket.on('chat message', async (message: ChatMessage) => {
-        console.log(`Chat message received: ${message.content}`);
-        if (message.gameId) {
-            try {
-                await addChatMessage(
+    socket.on('chat message', async (messageData: {
+        sender: string;
+        content: string;
+        gameId?: string;
+        timestamp: Date;
+    }) => {
+        const messageId = new mongoose.Types.ObjectId().toString();
+        const message = {
+            id: messageId,
+            ...messageData,
+            timestamp: new Date(),
+        };
+    
+        try {
+            if (message.gameId) {
+                // Save to database
+                await Game.findByIdAndUpdate(
                     message.gameId,
-                    message.sender,
-                    message.content,
-                    message.isSystemMessage || false
+                    {
+                        $push: {
+                            chatMessages: {
+                                _id: messageId,
+                                sender: message.sender,
+                                content: message.content,
+                                timestamp: message.timestamp,
+                                gameId: message.gameId
+                            }
+                        }
+                    }
                 );
-            } catch (error) {
-                console.error('Error saving chat message:', error);
+                
+                // Emit only to the specific game room
+                io.to(message.gameId).emit('chat message', message);
+            } else {
+                // Emit to all users if no gameId (global chat)
+                io.emit('chat message', message);
             }
-        } else {
-            // Handle lobby-wide messages if needed
-            io.emit('chat message', message);
+        } catch (error) {
+            console.error('Error handling chat message:', error);
+            socket.emit('chat error', { message: 'Failed to send message' });
         }
     });
 
+    
     socket.on('disconnect', () => {
         if (onlineUsers[socket.id]) {
             const username = onlineUsers[socket.id].username;

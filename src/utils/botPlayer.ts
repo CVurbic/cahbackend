@@ -64,3 +64,26 @@ export function botSelectWinner(game: IGame): string | null {
     console.log(`Bot Card Czar selected winner: ${winningPlayerId}`);
     return winningPlayerId;
 }
+
+export function botHandleVote(game: IGame, botId: string): boolean {
+    const shouldAgree = Math.random() < 0.7;
+    console.log(`Bot ${botId} voted ${shouldAgree ? 'YES' : 'NO'} on the vote`);
+    return shouldAgree;
+}
+
+export function botSelectCardsToChange(game: IGame, botId: string): string[] {
+    const bot = game.players.find(player => player.id === botId);
+    if (!bot || !game.currentVote) return [];
+
+    const cardsToChange: string[] = [];
+    const cardCount = game.currentVote.cardCount;
+
+    while (cardsToChange.length < cardCount && bot.hand.length > cardsToChange.length) {
+        const availableCards = bot.hand.filter(card => !cardsToChange.includes(card.id));
+        const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+        cardsToChange.push(randomCard.id);
+    }
+
+    console.log(`Bot ${bot.name} selected ${cardsToChange.length} cards to change`);
+    return cardsToChange;
+}
