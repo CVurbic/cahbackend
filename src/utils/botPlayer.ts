@@ -66,7 +66,7 @@ export function botSelectWinner(game: IGame): string | null {
 }
 
 export function botHandleVote(game: IGame, botId: string): boolean {
-    const shouldAgree = Math.random() < 0.7;
+    const shouldAgree = true;
     console.log(`Bot ${botId} voted ${shouldAgree ? 'YES' : 'NO'} on the vote`);
     return shouldAgree;
 }
