@@ -29,7 +29,7 @@ import {
     getPlayerStats,
     rateCardPack,
     getSortedPacks,
-    getMessagesSince,
+    // getMessagesSince,
     initiateVote,
     submitVote,
     selectCardsToChange,
@@ -95,10 +95,13 @@ router.get('/player-stats', getPlayerStats);
 router.get('/:gameId/messages-since/:timestamp', async (req, res) => {
     try {
         const { gameId, timestamp } = req.params;
-        const messages = await getMessagesSince(gameId, new Date(timestamp));
-        res.status(200).json({ messages });
+        if (!gameId) {
+            return res.status(400).json({ message: 'Game ID is required' });
+        }
+        // const messages = await getMessagesSince(gameId, new Date(timestamp));
+        res.status(200).json({ messages: [] });
     } catch (error: any) {
-        console.error('Error fetching messages since timestamp:', error);
+        // console.error('Error fetching messages since timestamp:', error);
         res.status(500).json({ message: 'Error fetching messages', error: error.message });
     }
 });

@@ -1689,7 +1689,7 @@ export const getSortedPacks = async (req: Request, res: Response) => {
     }
 };
 
-export const getMessagesSince = async (gameId: string, timestamp: Date) => {
+/* export const getMessagesSince = async (gameId: string, timestamp: Date) => {
     try {
         const game = await Game.findById(gameId);
         if (!game) {
@@ -1714,7 +1714,7 @@ export const getMessagesSince = async (gameId: string, timestamp: Date) => {
         console.error('Error getting messages since timestamp:', error);
         throw error;
     }
-};
+}; */
 
 export const initiateVote = async (req: Request, res: Response) => {
     try {
@@ -2181,7 +2181,7 @@ export default {
     updatePackUsageAndRating,
     rateCardPack,
     getSortedPacks,
-    getMessagesSince,
+    // getMessagesSince,
     initiateVote,
     submitVote,
     selectCardsToChange,

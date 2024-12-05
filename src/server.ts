@@ -15,6 +15,9 @@ import imageRoutes from './routes/imageRoutes';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import Game from './models/Game';
+import adminAuthRoutes from './routes/adminAuthRoutes';
+import { createInitialAdmin } from './controllers/authAdminController';
+import adminRoutes from './routes/adminRoutes';
 
 dotenv.config();
 const app = express();
@@ -39,6 +42,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/game', gameRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/admin/auth', adminAuthRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -48,10 +53,14 @@ setIo(io);
 
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URI as string)
-    .then(() => console.log('Connected to MongoDB'))
+    .then(async () => {
+        console.log('Connected to MongoDB');
+        await createInitialAdmin();
+        console.log('Initial admin setup complete');
+    })
     .catch((err) => {
         console.error('MongoDB connection error:', err);
-        process.exit(1);  // Exit the process if unable to connect to MongoDB
+        process.exit(1);
     });
 
 // Global online users
@@ -319,6 +328,9 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 // Set up periodic cleanup
 setInterval(cleanupStaleUsers, 15000); // Check every 15 seconds
+
+// Create initial admin account when server starts
+createInitialAdmin();
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
