@@ -27,7 +27,7 @@ export interface Vote {
     timestamp: Date;
     votes: { [playerId: string]: boolean };
     status: string;
-    cardsToChange: { [playerId: string]: string[] };
+    cardsToChange: Map<string, string[]>;
     roundInitiated: number;
 
 }
@@ -41,7 +41,7 @@ export interface IGame extends Document {
     currentBlackCard: BlackCard | null;
     cardCzar: string | null;
     round: number;
-    phase: 'lobby' | 'playing' | 'selection' | 'roundWinner' | 'gameOver';
+    phase: 'lobby' | 'playing' | 'selection' | 'roundWinner' | 'gameOver' | 'voting';
     winner: string | null;
     blackCards: BlackCard[];
     whiteCards: WhiteCard[];
@@ -62,6 +62,7 @@ export interface IGame extends Document {
     currentVote: Vote | null;
     usedVotes: string[];
     lastVoteRound: number;
+    previousPhase?: 'playing' | 'selection' | 'roundWinner' | 'voting' | 'gameOver' | 'lobby';
 }
 
 const GameSchema: Schema = new Schema({
@@ -82,7 +83,15 @@ const GameSchema: Schema = new Schema({
     },
     cardCzar: String,
     round: Number,
-    phase: String,
+    phase: {
+        type: String,
+        enum: ['lobby', 'playing', 'selection', 'roundWinner', 'gameOver', 'voting'],
+        required: true
+    },
+    previousPhase: {
+        type: String,
+        enum: ['playing', 'selection', 'roundWinner', 'voting', 'gameOver', 'lobby']
+    },
     winner: String,
     blackCards: [Schema.Types.Mixed],
     whiteCards: [Schema.Types.Mixed],

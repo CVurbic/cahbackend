@@ -1,6 +1,6 @@
 import { ICardPack } from "../models/Card";
 
-export interface Card {	
+export interface Card {
     id: string;
     text: string;
     type: 'black' | 'white';
@@ -33,7 +33,7 @@ export interface GameState {
     winningScore: number;
     round: number;
     playedCards: { [key: string]: Card[] };
-    phase: 'lobby' | 'playing' | 'selection' | 'roundWinner' | 'gameOver';
+    phase: 'lobby' | 'playing' | 'selection' | 'roundWinner' | 'gameOver' | 'voting';
     winner: string | null;
     blackCards: Card[];
     whiteCards: Card[];

@@ -92,7 +92,6 @@ router.get('/packs/sorted', getSortedPacks);
 // Add new authenticated-only route
 router.get('/player-stats', getPlayerStats);
 
-// Add this route
 router.get('/:gameId/messages-since/:timestamp', async (req, res) => {
     try {
         const { gameId, timestamp } = req.params;
@@ -104,7 +103,8 @@ router.get('/:gameId/messages-since/:timestamp', async (req, res) => {
     }
 });
 
-// Add these new routes
+router.get("/admin/")
+
 router.post('/:gameId/initiate-vote', initiateVote);
 router.post('/:gameId/submit-vote', submitVote);
 router.post('/:gameId/select-cards', selectCardsToChange);
