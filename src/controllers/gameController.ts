@@ -1832,11 +1832,28 @@ export const submitVote = async (req: Request, res: Response) => {
         if (updatedGame.currentVote) {
             io.to(gameId).emit('voteUpdated', {
                 ...updatedGame.currentVote,
+<<<<<<< Updated upstream
                 votes: updatedGame.currentVote.votes || {}
             });
 
             // Check if all players have voted
             const totalVotes = Object.keys(updatedGame.currentVote.votes || {}).length;
+=======
+                votes: updatedGame.currentVote.votes instanceof Map ?
+                    Object.fromEntries(updatedGame.currentVote.votes) :
+                    updatedGame.currentVote.votes
+            };
+
+            io.to(gameId).emit('voteUpdated', voteForEmit);
+
+            // Check if all players have voted and resolve immediately if they have
+
+            const totalVotes = updatedGame.currentVote.votes instanceof Map ?
+                updatedGame.currentVote.votes.size :
+                Object.keys(updatedGame.currentVote.votes).length;
+
+
+>>>>>>> Stashed changes
             if (totalVotes === updatedGame.players.length) {
                 console.log('All players have voted - resolving vote immediately');
                 await resolveVote(gameId);
@@ -1856,6 +1873,8 @@ export const selectCardsToChange = async (req: Request, res: Response) => {
         const { playerId, cardIds } = req.body;
 
 
+
+        console.log('=== SELECTING CARDS TO CHANGE ===', { gameId, playerId, cardIds });
 
         const game = await Game.findById(gameId);
 
@@ -1890,6 +1909,11 @@ export const selectCardsToChange = async (req: Request, res: Response) => {
         // Update using Map methods
         game.currentVote.cardsToChange.set(playerId, cardIds);
         game.markModified('currentVote.cardsToChange');
+        // Emit card selection update
+        io.to(gameId).emit('cardSelectionUpdated', {
+            selections: Object.fromEntries(game.currentVote.cardsToChange),
+            requiredSelections: game.players.length
+        });
         await game.save();
 
 
@@ -1928,6 +1952,7 @@ const resolveVote = async (gameId: string) => {
         return;
     }
 
+<<<<<<< Updated upstream
     // Log current vote state
     console.log('Current vote state:', {
         voteId: game.currentVote.id,
@@ -1941,6 +1966,13 @@ const resolveVote = async (gameId: string) => {
     const votes = game.currentVote.votes instanceof Map ? Object.fromEntries(game.currentVote.votes) : game.currentVote.votes;
 
     // Get total number of players and current votes
+=======
+    // Get total number of votes cast
+    const totalVotesCast = game.currentVote.votes instanceof Map ?
+        game.currentVote.votes.size :
+        Object.keys(game.currentVote.votes).length;
+
+>>>>>>> Stashed changes
     const totalPlayers = game.players.length;
     const yesVotes = Object.values(votes).filter(vote => vote === true).length;
     const noVotes = Object.values(votes).filter(vote => vote === false).length;
@@ -1982,8 +2014,16 @@ const resolveVote = async (gameId: string) => {
         return; // Exit without resolving
     }
 
+<<<<<<< Updated upstream
     console.log('=== RESOLVE VOTE END ===');
 };
+=======
+    const agreeingPlayers = game.currentVote.votes instanceof Map ?
+        Array.from(game.currentVote.votes.values()).filter(vote => vote === true).length :
+        Object.values(game.currentVote.votes).filter(vote => vote === true).length;
+
+    const passed = agreeingPlayers > totalPlayers / 2;
+>>>>>>> Stashed changes
 
 const resolveVoteResult = async (game: IGame, passed: boolean) => {
     if (!game.currentVote) return;
