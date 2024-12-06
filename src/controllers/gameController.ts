@@ -2065,7 +2065,7 @@ const resolveVote = async (gameId: string) => {
                 // Emit the state change
                 io.to(gameId).emit('gameStateUpdate', updatedGame);
             }
-        }, 5000);
+        }, 2000);
     } else {
         // For failed votes, wait 5 seconds before clearing
         setTimeout(async () => {
@@ -2079,7 +2079,7 @@ const resolveVote = async (gameId: string) => {
                 await updatedGame.save();
                 io.to(gameId).emit('gameStateUpdate', updatedGame);
             }
-        }, 5000);
+        }, 2000);
     }
 };
 
