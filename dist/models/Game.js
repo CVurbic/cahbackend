@@ -83,6 +83,7 @@ const GameSchema = new mongoose_1.Schema({
         id: String,
         initiator: String,
         cardCount: Number,
+        expiresAt: Date,
         timestamp: Date,
         votes: {
             type: Map,

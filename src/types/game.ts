@@ -53,10 +53,12 @@ export interface GameState {
 }
 
 export interface ChatMessage {
+    _id: string;
     sender: string;
     content: string;
     timestamp: Date;
     gameId: string;
+    status: string;
     isSystemMessage: boolean;
 }
 
@@ -67,7 +69,7 @@ export interface Vote {
     expiresAt: Date;
     timestamp: Date;
     votes: { [playerId: string]: boolean };
-    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';     
+    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';
     cardsToChange: { [playerId: string]: string[] };
     roundInitiated: number;
 }

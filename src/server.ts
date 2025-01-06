@@ -6,7 +6,6 @@ import mongoose from 'mongoose';
 import gameRoutes from './routes/gameRoutes';
 import { setIo, addChatMessage } from './controllers/gameController';
 import dotenv from 'dotenv';
-import { ChatMessage } from './types/game';
 import bodyParser from 'body-parser';
 import authRoutes from './routes/authRoutes';
 import { createNotification } from './controllers/notificationController';
@@ -14,10 +13,11 @@ import notificationRoutes from './routes/notificationRoutes';
 import imageRoutes from './routes/imageRoutes';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import Game from './models/Game';
+import Game, { IChatMessage } from './models/Game';
 import adminAuthRoutes from './routes/adminAuthRoutes';
 import { createInitialAdmin } from './controllers/authAdminController';
 import adminRoutes from './routes/adminRoutes';
+import { ChatMessage } from './types/game';
 
 dotenv.config();
 const app = express();
@@ -108,6 +108,9 @@ const emitOnlineUsers = () => {
     io.emit('onlineUsersUpdate', onlineUsernames);
 };
 
+// Keep track of recent messages per game
+const gameMessages: { [gameId: string]: ChatMessage[] } = {};
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log('A user connected');
@@ -161,50 +164,81 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('chat message', async (messageData: {
-        sender: string;
-        content: string;
-        gameId?: string;
-        timestamp: Date;
-    }) => {
-        const messageId = new mongoose.Types.ObjectId().toString();
-        const message = {
-            id: messageId,
-            ...messageData,
-            timestamp: new Date(),
-        };
-    
+    socket.on('chat message', async (messageData: any) => {
+        console.log('chat message received:', messageData);
         try {
-            if (message.gameId) {
-                // Save to database
-                await Game.findByIdAndUpdate(
-                    message.gameId,
-                    {
-                        $push: {
-                            chatMessages: {
-                                _id: messageId,
-                                sender: message.sender,
-                                content: message.content,
-                                timestamp: message.timestamp,
-                                gameId: message.gameId
-                            }
-                        }
-                    }
-                );
-                
-                // Emit only to the specific game room
-                io.to(message.gameId).emit('chat message', message);
-            } else {
-                // Emit to all users if no gameId (global chat)
-                io.emit('chat message', message);
+            const game = await Game.findById(messageData.gameId);
+            if (!game) {
+                console.error('Game not found for chat message:', messageData.gameId);
+                return;
             }
+
+            const chatMessage: IChatMessage = {
+                _id: messageData._id || new mongoose.Types.ObjectId().toString(),
+                sender: messageData.sender,
+                content: messageData.content,
+                timestamp: new Date(messageData.timestamp),
+                isSystemMessage: messageData.isSystemMessage,
+                gameId: messageData.gameId,
+                status: 'sent'
+            };
+
+            // Update game with new message
+            await Game.findByIdAndUpdate(
+                messageData.gameId,
+                {
+                    $push: { chatMessages: chatMessage }
+                },
+                { new: true }
+            );
+
+            // Keep the same format as received from client
+            const clientMessage = {
+                _id: chatMessage._id,
+                content: chatMessage.content,
+                sender: chatMessage.sender,
+                username: chatMessage.sender,
+                timestamp: chatMessage.timestamp,
+                gameId: chatMessage.gameId,
+                isSystemMessage: chatMessage.isSystemMessage
+            };
+
+            console.log("emiting chat message: to game", messageData.gameId);
+            console.log("emiting chat message:", clientMessage);
+            console.log("emmiting with message chat message")
+            // Emit to the specific game room
+            io.to(messageData.gameId).emit('chat message', clientMessage);
+
         } catch (error) {
             console.error('Error handling chat message:', error);
             socket.emit('chat error', { message: 'Failed to send message' });
         }
     });
 
-    
+    socket.on('request_recent_messages', async ({ gameId }) => {
+        try {
+            const game = await Game.findById(gameId);
+            if (game && game.chatMessages) {
+                // Convert MongoDB messages to client format
+                const messages = game.chatMessages.map(msg => ({
+                    _id: msg._id,
+                    text: msg.content,
+                    sender: msg.sender,
+                    username: msg.sender,
+                    timestamp: msg.timestamp,
+                    gameId: msg.gameId,
+                    isSystemMessage: msg.isSystemMessage
+                }));
+                socket.emit('recent_messages', messages);
+            } else {
+                socket.emit('recent_messages', []);
+            }
+        } catch (error) {
+            console.error('Error fetching recent messages:', error);
+            socket.emit('recent_messages', []);
+        }
+    });
+
     socket.on('disconnect', () => {
         if (onlineUsers[socket.id]) {
             const username = onlineUsers[socket.id].username;

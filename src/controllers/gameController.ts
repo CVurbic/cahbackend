@@ -215,10 +215,10 @@ export const getGameState = async (req: Request, res: Response) => {
             cardCount: game.currentVote.cardCount || 0,
             expiresAt: game.currentVote.expiresAt || new Date(),
             timestamp: game.currentVote.timestamp || new Date(),
-            votes: game.currentVote.votes instanceof Map ? 
+            votes: game.currentVote.votes instanceof Map ?
                 Object.fromEntries(game.currentVote.votes) : {},
             status: (game.currentVote.status || 'completed') as 'active' | 'passed' | 'failed' | 'selecting' | 'completed',
-            cardsToChange: game.currentVote.cardsToChange instanceof Map ? 
+            cardsToChange: game.currentVote.cardsToChange instanceof Map ?
                 Object.fromEntries(game.currentVote.cardsToChange) : {},
             roundInitiated: game.currentVote.roundInitiated || 0
         } : null;
@@ -459,6 +459,29 @@ const rotateCardCzar = (game: IGame, winningPlayerId: string) => {
     console.log(`New Card Czar: ${game.players.find(player => player.id === winningPlayerId)?.name} (${game.cardCzar})`);
 };
 
+// Helper function to add system message
+const addSystemMessage = async (gameId: string, content: string) => {
+    const systemMessage = {
+        _id: new mongoose.Types.ObjectId().toString(),
+        content,
+        sender: 'System',
+        timestamp: new Date(),
+        gameId,
+        isSystemMessage: true
+    };
+
+    try {
+        await Game.findByIdAndUpdate(gameId, {
+            $push: { chatMessages: systemMessage }
+        });
+        console.log("line 477: gamecontroller emitting system message to game", gameId);
+        console.log("line 478: gamecontroller emitting system message", systemMessage);
+        io.to(gameId).emit('chat message', systemMessage);
+    } catch (error) {
+        console.error('Error adding system message:', error);
+    }
+};
+
 export const playCard = async (req: Request, res: Response) => {
     try {
         const { gameId } = req.params;
@@ -513,12 +536,9 @@ export const playCard = async (req: Request, res: Response) => {
         // Calculate remaining players
         const remainingPlayers = game.players.length - game.playedCards.size - 1; // -1 for Card Czar
 
-        // Prepare notification
-        const playerName = player.name || 'Unknown player';
-        const notification = {
-            title: 'Card Played',
-            message: `${playerName} has played their card${cardIds.length > 1 ? 's' : ''}. ${remainingPlayers} player${remainingPlayers !== 1 ? 's' : ''} left to play.`
-        };
+        // Create system message instead of notification
+        const systemMessage = `${player.name} has played their card${cardIds.length > 1 ? 's' : ''}. ${remainingPlayers} player${remainingPlayers !== 1 ? 's' : ''} left to play.`;
+        await addSystemMessage(gameId, systemMessage);
 
         game.markModified('playedCards');
         game.markModified('players');
@@ -529,9 +549,6 @@ export const playCard = async (req: Request, res: Response) => {
 
         // Emit game state update to all players
         io.to(gameId).emit('gameStateUpdate', game);
-
-        // Emit notification to all players except the one who played
-        io.to(gameId).except(playerId).emit('notification', notification);
 
         // Handle bot actions
         let allBotsPlayed = false;
@@ -843,13 +860,9 @@ const handleBotSelectWinner = async (game: IGame, winningPlayerId: string, reaso
 
         await game.save();
 
-        // Emit notification for winner selection
-        const notification = {
-            title: 'Winner Selected',
-            message: `${game.players.find(p => p.id === game.cardCzar)?.name} (Card Czar) has selected ${winningPlayer.name} as the winner! DICK`,
-            reason: reason
-        };
-        io.to(game._id).emit('notification', notification);
+        // Create system message instead of notification
+        const systemMessage = `${game.players.find(p => p.id === game.cardCzar)?.name} (Card Czar) has selected ${winningPlayer.name} as the winner!`;
+        await addSystemMessage(game._id, systemMessage);
 
         // Emit game state update
         const gameState = game.toObject();
@@ -899,6 +912,10 @@ export const selectWinner = async (req: Request, res: Response) => {
         }
 
         await game.save();
+
+        // Create system message instead of notification
+        const systemMessage = `${winningPlayer.name} won the round!`;
+        await addSystemMessage(gameId, systemMessage);
 
         // Emit the updated game state
         io.to(gameId).emit('gameStateUpdate', game);
@@ -1974,74 +1991,92 @@ export const selectCardsToChange = async (req: Request, res: Response) => {
         const { gameId } = req.params;
         const { playerId, cardIds } = req.body;
 
-
-
-        console.log('=== SELECTING CARDS TO CHANGE ===', { gameId, playerId, cardIds });
+        console.log('\n=== SELECTING CARDS TO CHANGE - START ===');
+        console.log('Request params:', { gameId, playerId, cardIds });
 
         const game = await Game.findById(gameId);
-
 
         if (!game || !game.currentVote) {
             console.log('Error: Game or vote not found');
             return res.status(404).json({ message: 'Game or vote not found' });
         }
 
+        console.log('Current vote status:', game.currentVote.status);
+        console.log('Current cardsToChange:', game.currentVote.cardsToChange);
 
         if (game.currentVote.status !== 'selecting') {
             console.log('Error: Invalid vote status:', game.currentVote.status);
             return res.status(400).json({ message: 'No active selecting vote' });
         }
 
-
-
-        if (cardIds.length !== game.currentVote.cardCount) {
-            console.log('Error: Invalid card count');
-            return res.status(400).json({
-                message: `Must select exactly ${game.currentVote.cardCount} cards`
-            });
+        // Initialize or convert cardsToChange
+        let currentSelections = {};
+        if (game.currentVote.cardsToChange instanceof Map) {
+            currentSelections = Object.fromEntries(game.currentVote.cardsToChange);
+        } else if (typeof game.currentVote.cardsToChange === 'object' && game.currentVote.cardsToChange !== null) {
+            currentSelections = { ...game.currentVote.cardsToChange };
         }
 
+        console.log('Current selections before update:', currentSelections);
+        // Update selections
+        currentSelections = {
+            ...currentSelections,
+            [playerId]: cardIds
+        };
+        game.currentVote.cardsToChange = currentSelections;
 
+        console.log('Updated selections:', currentSelections);
 
-        // Initialize cardsToChange if it doesn't exist
-        if (!game.currentVote.cardsToChange) {
-            game.currentVote.cardsToChange = {};
-        }
+        // Force Mongoose to recognize the changes
+        game.markModified('currentVote');
 
-        // Update using Map methods
-        game.currentVote.cardsToChange[playerId] = cardIds;
-        game.markModified('currentVote.cardsToChange');
-        // Emit card selection update
-        console.log("emited cardSelectionUpdated to game", gameId);
-        io.to(gameId).emit('cardSelectionUpdated', {
-            selections: game.currentVote.cardsToChange,
-            requiredSelections: game.players.length
-        });
-
-        await game.save();
-
-
-
-        // Update the player selection check
-        const allPlayersSelected = game.players.every(player =>
-            game.currentVote?.cardsToChange[player.id]?.length === game.currentVote?.cardCount
+        // Save using findOneAndUpdate to ensure atomic operation
+        const updatedGame = await Game.findOneAndUpdate(
+            { _id: gameId, 'currentVote.id': game.currentVote.id },
+            {
+                $set: {
+                    'currentVote.cardsToChange': currentSelections
+                }
+            },
+            { new: true }
         );
 
+        if (!updatedGame) {
+            throw new Error('Failed to update game');
+        }
+
+        console.log('Saved selections:', updatedGame.currentVote?.cardsToChange);
+
+        // Check if all players have selected
+        const allPlayersSelected = game.players.every(player => {
+            const hasSelected = currentSelections.hasOwnProperty(player.id) &&
+                Array.isArray(currentSelections[player.id as keyof typeof currentSelections]) &&
+                (currentSelections[player.id as keyof typeof currentSelections] as any[]).length === game.currentVote?.cardCount;
+            console.log(`Player ${player.name} selection status:`, hasSelected);
+            return hasSelected;
+        });
+
+        console.log('All players selected:', allPlayersSelected);
+
+        // Emit update
+        io.to(gameId).emit('cardSelectionUpdated', {
+            selections: currentSelections,
+            requiredSelections: game.players.length
+        });
 
         if (allPlayersSelected) {
             console.log('All players have selected cards - executing card change');
             await executeCardChange(gameId);
         }
 
-
-
-        res.status(200).json({ message: 'Cards selected successfully' });
-    } catch (error: any) {
-        console.error('Error in selectCardsToChange:', {
-            error: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString()
+        res.status(200).json({
+            message: 'Cards selected successfully',
+            currentSelections: currentSelections,
+            allSelected: allPlayersSelected
         });
+
+    } catch (error: any) {
+        console.error('Error in selectCardsToChange:', error);
         res.status(500).json({ message: 'Error selecting cards', error: error.message });
     }
 };
@@ -2132,49 +2167,33 @@ const executeCardChange = async (gameId: string) => {
             return;
         }
 
-        // Handle bot card selections first
-        const botPlayers = game.players.filter(p => p.isBot);
-        for (const bot of botPlayers) {
-            if (!game.currentVote.cardsToChange[bot.id]) {
-                const selectedCards = botSelectCardsToChange(game, bot.id);
-                game.currentVote.cardsToChange[bot.id] = selectedCards;
-            }
-        }
+        // Get the selected cards from currentVote and ensure it's treated as a Map
+        const selectedCards = game.currentVote.cardsToChange instanceof Map ?
+            game.currentVote.cardsToChange :
+            new Map(Object.entries(game.currentVote.cardsToChange));
 
-        // Handle random selection for players who haven't chosen
-        for (const player of game.players) {
-            if (!game.currentVote.cardsToChange[player.id]) {
-                console.log(`Player ${player.name} didn't select cards, choosing randomly`);
-                const randomCards = [];
-                const availableCards = [...player.hand];
-
-                for (let i = 0; i < game.currentVote.cardCount; i++) {
-                    if (availableCards.length === 0) break;
-                    const randomIndex = Math.floor(Math.random() * availableCards.length);
-                    const card = availableCards.splice(randomIndex, 1)[0];
-                    randomCards.push(card.id);
-                }
-
-                game.currentVote.cardsToChange[player.id] = randomCards;
-            }
-        }
+        console.log('Selected cards from vote:', selectedCards);
 
         // Process card changes for each player
-        for (const playerId in game.currentVote.cardsToChange) {
-            const cardIds = game.currentVote.cardsToChange[playerId];
-            const player = game.players.find(p => p.id === playerId);
-            if (!player) continue;
-
+        for (const player of game.players) {
+            const playerSelectedCards = selectedCards.get(player.id);
             console.log(`Processing card change for ${player.name}:`, {
-                selectedCards: cardIds,
+                selectedCards: playerSelectedCards,
                 handSize: player.hand.length
             });
 
+            if (!Array.isArray(playerSelectedCards)) {
+                console.error(`Invalid card selection for player ${player.name}`);
+                continue;
+            }
+
             // Remove selected cards from player's hand
-            player.hand = player.hand.filter(card => !cardIds.includes(card.id));
+            player.hand = player.hand.filter(card =>
+                !playerSelectedCards.includes(card.id)
+            );
 
             // Deal new cards
-            const newCards = game.whiteCards.splice(0, cardIds.length);
+            const newCards = game.whiteCards.splice(0, playerSelectedCards.length);
             player.hand.push(...newCards);
 
             console.log(`Completed card change for ${player.name}:`, {
@@ -2185,8 +2204,8 @@ const executeCardChange = async (gameId: string) => {
 
         // Reset vote and restore phase
         game.currentVote = null;
-        game.phase = game.previousPhase || 'playing';  // Restore previous phase
-        game.previousPhase = undefined;  // Clear previous phase
+        game.phase = game.previousPhase || 'playing';
+        game.previousPhase = undefined;
 
         console.log('Final game state:', {
             phase: game.phase,
@@ -2196,12 +2215,11 @@ const executeCardChange = async (gameId: string) => {
 
         await game.save();
         io.to(gameId).emit('cardsChanged');
-        console.log("emited cardsChanged to game", gameId);
+        console.log("emitted cardsChanged to game", gameId);
         io.to(gameId).emit('gameStateUpdate', game);
 
     } catch (error) {
         console.error('Error in executeCardChange:', error);
-        // Emit error to clients
         io.to(gameId).emit('cardChangeError', {
             message: 'Failed to change cards'
         });

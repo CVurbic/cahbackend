@@ -95,6 +95,8 @@ const emitOnlineUsers = () => {
     console.log('Emitting online users update:', onlineUsernames);
     io.emit('onlineUsersUpdate', onlineUsernames);
 };
+// Keep track of recent messages per game
+const gameMessages = {};
 // Socket.IO connection handling
 io.on('connection', (socket) => {
     console.log('A user connected');
@@ -144,33 +146,70 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('chat message', (messageData) => __awaiter(void 0, void 0, void 0, function* () {
-        const messageId = new mongoose_1.default.Types.ObjectId().toString();
-        const message = Object.assign(Object.assign({ id: messageId }, messageData), { timestamp: new Date() });
+        console.log('chat message received:', messageData);
         try {
-            if (message.gameId) {
-                // Save to database
-                yield Game_1.default.findByIdAndUpdate(message.gameId, {
-                    $push: {
-                        chatMessages: {
-                            _id: messageId,
-                            sender: message.sender,
-                            content: message.content,
-                            timestamp: message.timestamp,
-                            gameId: message.gameId
-                        }
-                    }
-                });
-                // Emit only to the specific game room
-                io.to(message.gameId).emit('chat message', message);
+            const game = yield Game_1.default.findById(messageData.gameId);
+            if (!game) {
+                console.error('Game not found for chat message:', messageData.gameId);
+                return;
             }
-            else {
-                // Emit to all users if no gameId (global chat)
-                io.emit('chat message', message);
-            }
+            const chatMessage = {
+                _id: messageData._id || new mongoose_1.default.Types.ObjectId().toString(),
+                sender: messageData.sender,
+                content: messageData.content,
+                timestamp: new Date(messageData.timestamp),
+                isSystemMessage: messageData.isSystemMessage,
+                gameId: messageData.gameId,
+                status: 'sent'
+            };
+            // Update game with new message
+            yield Game_1.default.findByIdAndUpdate(messageData.gameId, {
+                $push: { chatMessages: chatMessage }
+            }, { new: true });
+            // Keep the same format as received from client
+            const clientMessage = {
+                _id: chatMessage._id,
+                content: chatMessage.content,
+                sender: chatMessage.sender,
+                username: chatMessage.sender,
+                timestamp: chatMessage.timestamp,
+                gameId: chatMessage.gameId,
+                isSystemMessage: chatMessage.isSystemMessage
+            };
+            console.log("emiting chat message: to game", messageData.gameId);
+            console.log("emiting chat message:", clientMessage);
+            console.log("emmiting with message chat message");
+            // Emit to the specific game room
+            io.to(messageData.gameId).emit('chat message', clientMessage);
         }
         catch (error) {
             console.error('Error handling chat message:', error);
             socket.emit('chat error', { message: 'Failed to send message' });
+        }
+    }));
+    socket.on('request_recent_messages', (_a) => __awaiter(void 0, [_a], void 0, function* ({ gameId }) {
+        try {
+            const game = yield Game_1.default.findById(gameId);
+            if (game && game.chatMessages) {
+                // Convert MongoDB messages to client format
+                const messages = game.chatMessages.map(msg => ({
+                    _id: msg._id,
+                    text: msg.content,
+                    sender: msg.sender,
+                    username: msg.sender,
+                    timestamp: msg.timestamp,
+                    gameId: msg.gameId,
+                    isSystemMessage: msg.isSystemMessage
+                }));
+                socket.emit('recent_messages', messages);
+            }
+            else {
+                socket.emit('recent_messages', []);
+            }
+        }
+        catch (error) {
+            console.error('Error fetching recent messages:', error);
+            socket.emit('recent_messages', []);
         }
     }));
     socket.on('disconnect', () => {
