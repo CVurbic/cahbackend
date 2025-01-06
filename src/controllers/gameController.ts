@@ -14,8 +14,6 @@ import { exponentialBackoff } from '../utils/helpers';
 import { Document } from 'mongoose';
 import mongoose from 'mongoose';
 
-
-
 dotenv.config();
 
 const openai = new OpenAI({
@@ -210,6 +208,34 @@ export const getGameState = async (req: Request, res: Response) => {
             return res.status(404).json({ message: 'Game not found' });
         }
 
+        // Transform the vote data to match the expected type
+        const transformedVote = game.currentVote ? {
+            id: game.currentVote.id || '',
+            initiator: game.currentVote.initiator || '',
+            cardCount: game.currentVote.cardCount || 0,
+            expiresAt: game.currentVote.expiresAt || new Date(),
+            timestamp: game.currentVote.timestamp || new Date(),
+            votes: game.currentVote.votes instanceof Map ? 
+                Object.fromEntries(game.currentVote.votes) : {},
+            status: (game.currentVote.status || 'completed') as 'active' | 'passed' | 'failed' | 'selecting' | 'completed',
+            cardsToChange: game.currentVote.cardsToChange instanceof Map ? 
+                Object.fromEntries(game.currentVote.cardsToChange) : {},
+            roundInitiated: game.currentVote.roundInitiated || 0
+        } : null;
+
+        // Transform usedVotes from strings to Vote objects
+        const transformedUsedVotes = (game.usedVotes || []).map(voteId => ({
+            id: voteId,
+            initiator: '',
+            cardCount: 0,
+            expiresAt: new Date(),
+            timestamp: new Date(),
+            votes: {},
+            status: 'completed' as const,
+            cardsToChange: {},
+            roundInitiated: 0
+        }));
+
         const gameState: GameState = {
             _id: game._id,
             gameName: game.gameName,
@@ -238,7 +264,10 @@ export const getGameState = async (req: Request, res: Response) => {
             selectedBlackCardPacks: game.selectedBlackCardPacks,
             selectedWhiteCardPacks: game.selectedWhiteCardPacks,
             selectedBlackCardPacksIDs: game.selectedBlackCardPacksIDs,
-            selectedWhiteCardPacksIDs: game.selectedWhiteCardPacksIDs
+            selectedWhiteCardPacksIDs: game.selectedWhiteCardPacksIDs,
+            currentVote: transformedVote,
+            usedVotes: transformedUsedVotes,
+            previousPhase: game.previousPhase || null
         };
 
         // Handle played cards based on game phase
@@ -1716,6 +1745,9 @@ export const getSortedPacks = async (req: Request, res: Response) => {
     }
 }; */
 
+// Add this constant at the top of the file with other constants
+const VOTE_TIMEOUT_SECONDS = 60;
+
 export const initiateVote = async (req: Request, res: Response) => {
     try {
         const { gameId } = req.params;
@@ -1762,8 +1794,9 @@ export const initiateVote = async (req: Request, res: Response) => {
             timestamp: new Date(),
             votes: { [playerId]: true }, // Initiator automatically votes yes
             status: 'active',
-            cardsToChange: new Map(),
-            roundInitiated: game.round
+            cardsToChange: {},
+            roundInitiated: game.round,
+            expiresAt: new Date(Date.now() + VOTE_TIMEOUT_SECONDS * 1000)
         };
 
         game.previousPhase = game.phase;
@@ -1863,7 +1896,20 @@ export const initiateVote = async (req: Request, res: Response) => {
             } catch (error) {
                 console.error('Error in bot voting timeout:', error);
             }
-        }, 3000);
+        }, 2000);
+
+        // Set timeout to resolve vote after VOTE_TIMEOUT_SECONDS
+        setTimeout(async () => {
+            try {
+                const currentGame = await Game.findById(gameId);
+                if (currentGame?.currentVote?.id === newVote.id && currentGame.currentVote.status === 'active') {
+                    console.log(`Vote ${newVote.id} timed out after ${VOTE_TIMEOUT_SECONDS} seconds`);
+                    await resolveVote(gameId);
+                }
+            } catch (error) {
+                console.error('Error in vote timeout handler:', error);
+            }
+        }, VOTE_TIMEOUT_SECONDS * 1000);
 
         res.status(200).json({ vote: newVote });
     } catch (error: any) {
@@ -1959,16 +2005,16 @@ export const selectCardsToChange = async (req: Request, res: Response) => {
 
         // Initialize cardsToChange if it doesn't exist
         if (!game.currentVote.cardsToChange) {
-            game.currentVote.cardsToChange = new Map();
+            game.currentVote.cardsToChange = {};
         }
 
         // Update using Map methods
-        game.currentVote.cardsToChange.set(playerId, cardIds);
+        game.currentVote.cardsToChange[playerId] = cardIds;
         game.markModified('currentVote.cardsToChange');
         // Emit card selection update
         console.log("emited cardSelectionUpdated to game", gameId);
         io.to(gameId).emit('cardSelectionUpdated', {
-            selections: Object.fromEntries(game.currentVote.cardsToChange),
+            selections: game.currentVote.cardsToChange,
             requiredSelections: game.players.length
         });
 
@@ -1978,7 +2024,7 @@ export const selectCardsToChange = async (req: Request, res: Response) => {
 
         // Update the player selection check
         const allPlayersSelected = game.players.every(player =>
-            game.currentVote?.cardsToChange.get(player.id)?.length === game.currentVote?.cardCount
+            game.currentVote?.cardsToChange[player.id]?.length === game.currentVote?.cardCount
         );
 
 
@@ -2006,23 +2052,17 @@ const resolveVote = async (gameId: string) => {
         return;
     }
 
+    // Check if vote has already been resolved
+    if (game.currentVote.status !== 'active') {
+        return;
+    }
+
     // Get total number of votes cast
     const totalVotesCast = game.currentVote.votes instanceof Map ?
         game.currentVote.votes.size :
         Object.keys(game.currentVote.votes).length;
 
     const totalPlayers = game.players.length;
-
-    // Only resolve if all players have voted
-    if (totalVotesCast < totalPlayers) {
-        console.log('Waiting for more votes:', {
-            totalVotesCast,
-            totalPlayers,
-            pendingVotes: totalPlayers - totalVotesCast
-        });
-        return;
-    }
-
     const agreeingPlayers = game.currentVote.votes instanceof Map ?
         Array.from(game.currentVote.votes.values()).filter(vote => vote === true).length :
         Object.values(game.currentVote.votes).filter(vote => vote === true).length;
@@ -2065,7 +2105,7 @@ const resolveVote = async (gameId: string) => {
                 // Emit the state change
                 io.to(gameId).emit('gameStateUpdate', updatedGame);
             }
-        }, 2000);
+        }, 1000);
     } else {
         // For failed votes, wait 5 seconds before clearing
         setTimeout(async () => {
@@ -2095,15 +2135,15 @@ const executeCardChange = async (gameId: string) => {
         // Handle bot card selections first
         const botPlayers = game.players.filter(p => p.isBot);
         for (const bot of botPlayers) {
-            if (!game.currentVote.cardsToChange.get(bot.id)) {
+            if (!game.currentVote.cardsToChange[bot.id]) {
                 const selectedCards = botSelectCardsToChange(game, bot.id);
-                game.currentVote.cardsToChange.set(bot.id, selectedCards);
+                game.currentVote.cardsToChange[bot.id] = selectedCards;
             }
         }
 
         // Handle random selection for players who haven't chosen
         for (const player of game.players) {
-            if (!game.currentVote.cardsToChange.get(player.id)) {
+            if (!game.currentVote.cardsToChange[player.id]) {
                 console.log(`Player ${player.name} didn't select cards, choosing randomly`);
                 const randomCards = [];
                 const availableCards = [...player.hand];
@@ -2115,12 +2155,13 @@ const executeCardChange = async (gameId: string) => {
                     randomCards.push(card.id);
                 }
 
-                game.currentVote.cardsToChange.set(player.id, randomCards);
+                game.currentVote.cardsToChange[player.id] = randomCards;
             }
         }
 
         // Process card changes for each player
-        for (const [playerId, cardIds] of game.currentVote.cardsToChange.entries()) {
+        for (const playerId in game.currentVote.cardsToChange) {
+            const cardIds = game.currentVote.cardsToChange[playerId];
             const player = game.players.find(p => p.id === playerId);
             if (!player) continue;
 

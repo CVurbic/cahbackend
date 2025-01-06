@@ -42,7 +42,15 @@ const GameSchema = new mongoose_1.Schema({
     },
     cardCzar: String,
     round: Number,
-    phase: String,
+    phase: {
+        type: String,
+        enum: ['lobby', 'playing', 'selection', 'roundWinner', 'gameOver', 'voting'],
+        required: true
+    },
+    previousPhase: {
+        type: String,
+        enum: ['playing', 'selection', 'roundWinner', 'voting', 'gameOver', 'lobby']
+    },
     winner: String,
     blackCards: [mongoose_1.Schema.Types.Mixed],
     whiteCards: [mongoose_1.Schema.Types.Mixed],
@@ -56,17 +64,51 @@ const GameSchema = new mongoose_1.Schema({
     lastWinningCard: mongoose_1.Schema.Types.Mixed,
     winningScore: { type: Number, required: true },
     revealedCards: [String],
-    selectedBlackCardPacks: [String],
-    selectedWhiteCardPacks: [String],
+    selectedBlackCardPacks: [{ type: mongoose_1.Schema.Types.Mixed }],
+    selectedWhiteCardPacks: [{ type: mongoose_1.Schema.Types.Mixed }],
+    selectedBlackCardPacksIDs: [String],
+    selectedWhiteCardPacksIDs: [String],
     createdAt: { type: Date, default: Date.now },
     onlineUsers: [String],
     lastWinningReason: { type: String },
     chatMessages: [{
+            _id: { type: String, default: () => new mongoose_1.default.Types.ObjectId().toString() },
             sender: String,
             content: String,
             timestamp: { type: Date, default: Date.now },
-            isSystemMessage: Boolean
-        }]
+            isSystemMessage: Boolean,
+            gameId: String
+        }],
+    currentVote: {
+        id: String,
+        initiator: String,
+        cardCount: Number,
+        timestamp: Date,
+        votes: {
+            type: Map,
+            of: Boolean,
+            default: new Map()
+        },
+        status: {
+            type: String,
+            enum: ['active', 'passed', 'failed', 'selecting', 'completed'],
+            default: null
+        },
+        cardsToChange: {
+            type: Map,
+            of: [String],
+            default: new Map()
+        },
+        roundInitiated: Number
+    },
+    usedVotes: {
+        type: [String],
+        default: []
+    },
+    lastVoteRound: {
+        type: Number,
+        default: 0
+    }
 }, { _id: false });
 const Game = mongoose_1.default.model('Game', GameSchema);
 exports.default = Game;

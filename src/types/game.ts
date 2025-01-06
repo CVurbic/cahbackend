@@ -47,6 +47,9 @@ export interface GameState {
     selectedWhiteCardPacksIDs: string[];
     selectedBlackCardPacks: ICardPack[];
     selectedWhiteCardPacks: ICardPack[];
+    currentVote: Vote | null;
+    usedVotes: Vote[];
+    previousPhase: string | null;
 }
 
 export interface ChatMessage {
@@ -61,13 +64,10 @@ export interface Vote {
     id: string;
     initiator: string;
     cardCount: number;
+    expiresAt: Date;
     timestamp: Date;
-    votes: {
-        [playerId: string]: boolean;
-    };
-    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';
-    cardsToChange?: {
-        [playerId: string]: string[];
-    };
+    votes: { [playerId: string]: boolean };
+    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';     
+    cardsToChange: { [playerId: string]: string[] };
     roundInitiated: number;
 }

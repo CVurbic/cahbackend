@@ -24,12 +24,12 @@ export interface Vote {
     id: string;
     initiator: string;
     cardCount: number;
+    expiresAt: Date;
     timestamp: Date;
     votes: { [playerId: string]: boolean };
-    status: string;
-    cardsToChange: Map<string, string[]>;
+    status: 'active' | 'passed' | 'failed' | 'selecting' | 'completed';
+    cardsToChange: { [playerId: string]: string[] };
     roundInitiated: number;
-
 }
 
 export interface IGame extends Document {
@@ -124,6 +124,7 @@ const GameSchema: Schema = new Schema({
         id: String,
         initiator: String,
         cardCount: Number,
+        expiresAt: Date,
         timestamp: Date,
         votes: {
             type: Map,

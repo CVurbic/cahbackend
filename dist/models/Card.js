@@ -38,11 +38,19 @@ const CardPackSchema = new mongoose_1.Schema({
     isPublic: { type: Boolean, default: true },
     isOriginal: { type: Boolean, default: false },
     createdBy: { type: mongoose_1.Schema.Types.ObjectId, ref: 'User', required: true },
-    createdAt: { type: Date, default: Date.now },
+    createdAt: { type: Date, default: Date.now, index: true },
     blackCardCount: { type: Number, default: 0 },
     whiteCardCount: { type: Number, default: 0 },
-    usageCount: { type: Number, default: 0 },
-    rating: { type: Number, default: 0 }
+    usageCount: { type: Number, default: 0, index: true },
+    rating: { type: Number, default: 0, index: true },
+    totalRatings: { type: Number, default: 0 },
+    imageUrl: { type: String },
+    blackCardRating: { type: Number, default: 0 },
+    whiteCardRating: { type: Number, default: 0 },
+    blackCardUsage: { type: Number, default: 0 },
+    whiteCardUsage: { type: Number, default: 0 }
 });
+CardPackSchema.index({ rating: -1, usageCount: -1 });
+CardPackSchema.index({ createdAt: -1, rating: -1 });
 exports.CardPack = mongoose_1.default.model('CardPack', CardPackSchema);
 exports.Card = mongoose_1.default.model('Card', cardSchema);

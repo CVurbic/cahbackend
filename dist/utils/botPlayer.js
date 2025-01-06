@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.createBot = createBot;
 exports.botPlayCard = botPlayCard;
 exports.botSelectWinner = botSelectWinner;
+exports.botHandleVote = botHandleVote;
+exports.botSelectCardsToChange = botSelectCardsToChange;
 const uuid_1 = require("uuid");
 function createBot(name) {
     const bot = {
@@ -53,4 +55,23 @@ function botSelectWinner(game) {
     const winningPlayerId = playerIds[randomIndex];
     console.log(`Bot Card Czar selected winner: ${winningPlayerId}`);
     return winningPlayerId;
+}
+function botHandleVote(game, botId) {
+    const shouldAgree = true;
+    console.log(`Bot ${botId} voted ${shouldAgree ? 'YES' : 'NO'} on the vote`);
+    return shouldAgree;
+}
+function botSelectCardsToChange(game, botId) {
+    const bot = game.players.find(player => player.id === botId);
+    if (!bot || !game.currentVote)
+        return [];
+    const cardsToChange = [];
+    const cardCount = game.currentVote.cardCount;
+    while (cardsToChange.length < cardCount && bot.hand.length > cardsToChange.length) {
+        const availableCards = bot.hand.filter(card => !cardsToChange.includes(card.id));
+        const randomCard = availableCards[Math.floor(Math.random() * availableCards.length)];
+        cardsToChange.push(randomCard.id);
+    }
+    console.log(`Bot ${bot.name} selected ${cardsToChange.length} cards to change`);
+    return cardsToChange;
 }
